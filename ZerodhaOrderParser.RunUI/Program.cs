@@ -17,7 +17,7 @@ namespace ZerodhaOrderParser.RunUI
         {
             OrderParser orderParser = new OrderParser();
 
-            List<OrderDataSimplified> results = new List<OrderDataSimplified>();
+            List<OrderDataDetail> results = new List<OrderDataDetail>();
 
             string filepath = Console.ReadLine();
 
@@ -30,10 +30,26 @@ namespace ZerodhaOrderParser.RunUI
                 results.AddRange(consolidatedOrders);
             }
 
+            results = orderParser.CalculateDeductions(results);
+
+            Console.WriteLine();
+
+            Console.WriteLine("Total Profit Percentage : {0}%", (100 * results.Select(x => x.NetProfit).Sum() / results.Select(x => x.Turnover).Sum()));
+
+            Console.WriteLine();
+
+            Console.WriteLine("Total Profit : {0}", results.Select(x => x.NetProfit).Sum());
+
+            Console.WriteLine();
+
+            Console.WriteLine("Total Turnover : {0}", results.Select(x => x.Turnover).Sum());
+
+
+            Console.WriteLine();
 
             foreach (var result in results)
             {
-                File.WriteAllLines("output.txt", new string[] { result.EquityName + "\t" + result.Quantity + "\t" + result.BuyPrice + "\t" + result.SellPrice + "\t" });
+                File.AppendAllLines("output.txt", new string[] { result.EquityName + "\t" + result.Quantity + "\t" + result.BuyPrice + "\t" + result.SellPrice + "\t" });
 
                 Console.WriteLine(result.EquityName + "\t" + result.Quantity + "\t" + result.BuyPrice + "\t" + result.SellPrice + "\t");
             }
@@ -110,13 +126,13 @@ namespace ZerodhaOrderParser.RunUI
         }
 
         //Matching logic required lotsa perspiration 
-        public List<OrderDataSimplified> ConsolidateOrders(List<OrderData> orderDatas)
+        public List<OrderDataDetail> ConsolidateOrders(List<OrderData> orderDatas)
         {
             var buyOrders = orderDatas.Where(x => x.OrderType == OrderTyp.BUY).OrderBy(x => x.OrderTime).ToList();
 
             var sellOrders = orderDatas.Where(x => x.OrderType == OrderTyp.SELL).OrderBy(x => x.OrderTime).ToList();
 
-            var consolidatedResults = new List<OrderDataSimplified>();
+            var consolidatedResults = new List<OrderDataDetail>();
 
 
             if (sellOrders.Count >= buyOrders.Count)
@@ -129,7 +145,7 @@ namespace ZerodhaOrderParser.RunUI
 
                     for (int i = 0; i < sellOrders.Count && quantity != 0; i++)
                     {
-                        var result = new OrderDataSimplified();
+                        var result = new OrderDataDetail();
 
                         result.EquityName = buyOrder.EquityName;
 
@@ -157,7 +173,7 @@ namespace ZerodhaOrderParser.RunUI
 
                     for (int i = 0; i < buyOrders.Count && quantity != 0; i++)
                     {
-                        var result = new OrderDataSimplified();
+                        var result = new OrderDataDetail();
 
                         result.EquityName = sellOrder.EquityName;
 
@@ -178,9 +194,36 @@ namespace ZerodhaOrderParser.RunUI
 
             return consolidatedResults;
         }
+
+
+        public List<OrderDataDetail> CalculateDeductions(List<OrderDataDetail> orderDatas)
+        {
+            foreach (var orderData in orderDatas)
+            {
+                orderData.Turnover = (orderData.BuyPrice * orderData.Quantity) + (orderData.SellPrice * orderData.Quantity);
+
+                orderData.Brokerage = (0.0001f * orderData.Turnover) < 30 ? (0.0001f * orderData.Turnover) : 30;
+
+                orderData.Stt = orderData.Quantity * orderData.SellPrice * 0.00025f;
+
+                orderData.TransactionCharges = orderData.Turnover * 0.0000325f;
+
+                orderData.ServiceTax = (orderData.Brokerage + orderData.TransactionCharges) * 0.15f;
+
+                orderData.SebiCharges = orderData.Turnover * 0.000002f;
+
+                orderData.StampDuty = orderData.StampDuty * (0.01f / 100f);
+
+                orderData.TotalCharges = orderData.Brokerage + orderData.Stt + orderData.TransactionCharges + orderData.ServiceTax + orderData.SebiCharges + orderData.StampDuty;
+
+                orderData.NetProfit = ((orderData.SellPrice - orderData.BuyPrice) * orderData.Quantity) - orderData.TotalCharges;
+            }
+
+            return orderDatas;
+        }
     }
 
-    public class OrderDataSimplified
+    public class OrderDataDetail
     {
         public string EquityName { get; set; }
 
@@ -189,7 +232,28 @@ namespace ZerodhaOrderParser.RunUI
         public float SellPrice { get; set; }
 
         public int Quantity { get; set; }
+
+        public float Turnover { get; set; }
+
+        public float Brokerage { get; set; }
+
+        public float Stt { get; set; }
+
+        public float TransactionCharges { get; set; }
+
+        public float ServiceTax { get; set; }
+
+        public float SebiCharges { get; set; }
+
+        public float StampDuty { get; set; }
+
+        public float TotalCharges { get; set; }
+
+        public float NetProfit { get; set; }
     }
+
+
+
 
 
     public class OrderData
